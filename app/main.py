@@ -21,6 +21,7 @@ app.add_middleware(
         "http://localhost:5000",
         "http://localhost:5173",
         "https://automated-dashboard-frontend.vercel.app",
+        "https://automated-dashboard-frontend-5h66.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
