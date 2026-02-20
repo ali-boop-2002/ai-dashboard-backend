@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     
     # Supabase Auth
     SUPABASE_URL: str
-    SUPABASE_JWT_SECRET: str
+    SUPABASE_JWT_SECRET: Optional[str] = None
 
     # OpenAI (for ChatGPT Vision / LangChain)
     OPENAI_API_KEY: Optional[str] = None
