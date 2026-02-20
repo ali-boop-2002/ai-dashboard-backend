@@ -5,6 +5,7 @@
 
 # secrets
 secrets.json
+google-credentials.json
 *.key
 *.pem
 

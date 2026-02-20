@@ -31,6 +31,7 @@ from app.schemas.report import (
     OutstandingPaymentItem,
     TenantAnalyticsItem,
 )
+from app.core.auth import get_current_user, User
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -434,6 +435,7 @@ def _build_analytics(
 @router.get("/analytics", response_model=ReportAnalyticsOut)
 def get_reports_analytics(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     start_date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD)"),
     property_id: Optional[int] = Query(None, description="Filter by property ID"),
@@ -450,6 +452,7 @@ def get_reports_analytics(
 @router.get("/analytics/csv")
 def download_reports_csv(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     start_date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD)"),
     property_id: Optional[int] = Query(None, description="Filter by property ID"),
@@ -566,6 +569,7 @@ def _pdf_table(pdf, headers: List[str], rows: List[List[str]]):
 @router.get("/analytics/pdf")
 def download_reports_pdf(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     start_date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD)"),
     property_id: Optional[int] = Query(None, description="Filter by property ID"),

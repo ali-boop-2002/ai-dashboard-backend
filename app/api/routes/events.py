@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from app.api.deps import get_db
 from app.models.event import Event
 from app.schemas.event import EventCreate, EventOut, EventUpdate
+from app.core.auth import get_current_user, User
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -13,6 +14,7 @@ router = APIRouter(prefix="/events", tags=["events"])
 @router.get("", response_model=List[EventOut])
 def list_events(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     property_id: Optional[int] = Query(None),
     event_type: Optional[str] = Query(None),
     ticket_id: Optional[int] = Query(None),
@@ -41,6 +43,7 @@ def list_events(
 @router.get("/upcoming", response_model=List[EventOut])
 def upcoming_events(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     property_id: Optional[int] = Query(None),
     days_ahead: int = Query(7, ge=1, le=90),
 ):
@@ -66,6 +69,7 @@ def upcoming_events(
 @router.get("/overdue", response_model=List[EventOut])
 def overdue_events(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     property_id: Optional[int] = Query(None),
 ):
     """
@@ -85,7 +89,11 @@ def overdue_events(
 
 
 @router.post("", response_model=EventOut, status_code=201)
-def create_event(payload: EventCreate, db: Session = Depends(get_db)):
+def create_event(
+    payload: EventCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Create a new event (usually done automatically when ticket/approval created).
     """
@@ -97,7 +105,11 @@ def create_event(payload: EventCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{event_id}", response_model=EventOut)
-def get_event(event_id: int, db: Session = Depends(get_db)):
+def get_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Get a single event by ID.
     """
@@ -108,7 +120,12 @@ def get_event(event_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{event_id}", response_model=EventOut)
-def update_event(event_id: int, payload: EventUpdate, db: Session = Depends(get_db)):
+def update_event(
+    event_id: int,
+    payload: EventUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Update an event.
     """
@@ -126,7 +143,11 @@ def update_event(event_id: int, payload: EventUpdate, db: Session = Depends(get_
 
 
 @router.delete("/{event_id}")
-def delete_event(event_id: int, db: Session = Depends(get_db)):
+def delete_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Delete an event.
     """

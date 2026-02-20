@@ -18,6 +18,8 @@ from app.schemas.property import (
     PropertyStatsOut,
     OccupancyUpdate,
 )
+from app.core.auth import get_current_user, User
+from app.core.audit import log_audit
 
 router = APIRouter(prefix="/properties", tags=["properties"])
 
@@ -48,6 +50,7 @@ def apply_property_filters(
 @router.get("", response_model=List[PropertyOut])
 def list_properties(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     status: Optional[str] = Query(None, description="healthy|attention|critical"),
     manager_name: Optional[str] = Query(None),
     search: Optional[str] = Query(None, description="search by name/address/city/state/zip"),
@@ -132,7 +135,10 @@ def list_properties(
 
 
 @router.get("/stats", response_model=PropertyStatsOut)
-def properties_stats(db: Session = Depends(get_db)):
+def properties_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     For the top cards:
     - Total Properties
@@ -172,7 +178,11 @@ def properties_stats(db: Session = Depends(get_db)):
 
 
 @router.get("/{property_id}", response_model=PropertyDetailOut)
-def get_property(property_id: int, db: Session = Depends(get_db)):
+def get_property(
+    property_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     For your Property detail page:
     - property fields
@@ -198,7 +208,11 @@ def get_property(property_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=PropertyOut, status_code=201)
-def create_property(payload: PropertyCreate, db: Session = Depends(get_db)):
+def create_property(
+    payload: PropertyCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Create a property and automatically create units based on total_units.
     """
@@ -219,11 +233,41 @@ def create_property(payload: PropertyCreate, db: Session = Depends(get_db)):
         db.add(unit)
     
     db.commit()
+    created_units = db.query(Unit).filter(Unit.property_id == prop.id).all()
+    for unit in created_units:
+        log_audit(
+            db,
+            actor=current_user,
+            action="created",
+            entity_type="unit",
+            entity_id=str(unit.id),
+            status="over_due" if unit.over_due else "ok",
+            property_id=unit.property_id,
+            source="api",
+            description=f"Unit created via property: {unit.unit_number}",
+            risk_level="high" if unit.over_due else "low",
+        )
+    log_audit(
+        db,
+        actor=current_user,
+        action="created",
+        entity_type="property",
+        entity_id=str(prop.id),
+        status=prop.status,
+        property_id=prop.id,
+        source="api",
+        description=f"Property created: {prop.name}",
+    )
     return prop
 
 
 @router.patch("/{property_id}", response_model=PropertyOut)
-def update_property(property_id: int, payload: PropertyUpdate, db: Session = Depends(get_db)):
+def update_property(
+    property_id: int,
+    payload: PropertyUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     prop = db.query(Property).filter(Property.id == property_id).first()
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
@@ -251,11 +295,46 @@ def update_property(property_id: int, payload: PropertyUpdate, db: Session = Dep
 
     db.commit()
     db.refresh(prop)
+    if 'total_units' in data and new_total_units > old_total_units:
+        new_units = (
+            db.query(Unit)
+            .filter(Unit.property_id == property_id)
+            .filter(Unit.unit_number > old_total_units)
+            .all()
+        )
+        for unit in new_units:
+            log_audit(
+                db,
+                actor=current_user,
+                action="created",
+                entity_type="unit",
+                entity_id=str(unit.id),
+                status="over_due" if unit.over_due else "ok",
+                property_id=unit.property_id,
+                source="api",
+                description=f"Unit created via property update: {unit.unit_number}",
+                risk_level="high" if unit.over_due else "low",
+            )
+    log_audit(
+        db,
+        actor=current_user,
+        action="updated",
+        entity_type="property",
+        entity_id=str(prop.id),
+        status=prop.status,
+        property_id=prop.id,
+        source="api",
+        description=f"Property updated: {prop.name}",
+    )
     return prop
 
 
 @router.delete("/{property_id}", status_code=204)
-def delete_property(property_id: int, db: Session = Depends(get_db)):
+def delete_property(
+    property_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Delete a property and all related data (events, approvals, tickets, units, rent_payments).
     """
@@ -269,11 +348,27 @@ def delete_property(property_id: int, db: Session = Depends(get_db)):
     db.query(Ticket).filter(Ticket.property_id == property_id).delete()
     db.delete(prop)  # cascade deletes units, rent_payments
     db.commit()
+    log_audit(
+        db,
+        actor=current_user,
+        action="deleted",
+        entity_type="property",
+        entity_id=str(prop.id),
+        status=prop.status,
+        property_id=prop.id,
+        source="api",
+        description=f"Property deleted: {prop.name}",
+    )
     return None
 
 
 @router.patch("/{property_id}/occupancy", response_model=PropertyOut)
-def update_property_occupancy(property_id: int, payload: OccupancyUpdate, db: Session = Depends(get_db)):
+def update_property_occupancy(
+    property_id: int,
+    payload: OccupancyUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Update occupancy for a specific property.
     
@@ -305,4 +400,15 @@ def update_property_occupancy(property_id: int, payload: OccupancyUpdate, db: Se
     prop.occupancy = payload.occupancy
     db.commit()
     db.refresh(prop)
+    log_audit(
+        db,
+        actor=current_user,
+        action="updated",
+        entity_type="property",
+        entity_id=str(prop.id),
+        status=prop.status,
+        property_id=prop.id,
+        source="api",
+        description=f"Property occupancy updated: {prop.name}",
+    )
     return prop

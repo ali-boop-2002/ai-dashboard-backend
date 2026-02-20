@@ -7,6 +7,8 @@ from app.api.deps import get_db
 from app.models.approval import Approval
 from app.models.event import Event
 from app.schemas.approval import ApprovalCreate, ApprovalOut, ApprovalUpdate
+from app.core.auth import get_current_user, User
+from app.core.audit import log_audit
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -14,7 +16,10 @@ from sqlalchemy import func
 from datetime import datetime, timezone
 
 @router.get("/stats")
-def approvals_stats(db: Session = Depends(get_db)):
+def approvals_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     now = datetime.now(timezone.utc)
 
     pending_count = (
@@ -46,6 +51,7 @@ def approvals_stats(db: Session = Depends(get_db)):
 @router.get("", response_model=List[ApprovalOut])
 def list_approvals(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     status: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
     property: Optional[str] = Query(None),
@@ -70,7 +76,11 @@ def list_approvals(
     return q.order_by(Approval.created_at.desc()).all()
 
 @router.post("", response_model=ApprovalOut)
-def create_approval(payload: ApprovalCreate, db: Session = Depends(get_db)):
+def create_approval(
+    payload: ApprovalCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     exists = db.query(Approval).filter(Approval.id == payload.id).first()
     if exists:
         raise HTTPException(status_code=409, detail="Approval id already exists")
@@ -90,11 +100,29 @@ def create_approval(payload: ApprovalCreate, db: Session = Depends(get_db)):
     )
     db.add(event)
     db.commit()
+
+    log_audit(
+        db,
+        actor=current_user,
+        action="created",
+        entity_type="approval",
+        entity_id=str(row.id),
+        status=row.status,
+        due_at=row.due_at,
+        property_id=row.property_id,
+        source="api",
+        description=f"Approval created: {row.type} - ${row.amount}",
+    )
     
     return row
 
 @router.patch("/{approval_id}", response_model=ApprovalOut)
-def update_approval(approval_id: str, payload: ApprovalUpdate, db: Session = Depends(get_db)):
+def update_approval(
+    approval_id: str,
+    payload: ApprovalUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     row = db.query(Approval).filter(Approval.id == approval_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Approval not found")
@@ -105,13 +133,41 @@ def update_approval(approval_id: str, payload: ApprovalUpdate, db: Session = Dep
 
     db.commit()
     db.refresh(row)
+    log_audit(
+        db,
+        actor=current_user,
+        action="updated",
+        entity_type="approval",
+        entity_id=str(row.id),
+        status=row.status,
+        due_at=row.due_at,
+        property_id=row.property_id,
+        source="api",
+        description=f"Approval updated: {row.type} - ${row.amount}",
+    )
     return row
 
 @router.delete("/{approval_id}")
-def delete_approval(approval_id: str, db: Session = Depends(get_db)):
+def delete_approval(
+    approval_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     row = db.query(Approval).filter(Approval.id == approval_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Approval not found")
     db.delete(row)
     db.commit()
+    log_audit(
+        db,
+        actor=current_user,
+        action="deleted",
+        entity_type="approval",
+        entity_id=str(row.id),
+        status=row.status,
+        due_at=row.due_at,
+        property_id=row.property_id,
+        source="api",
+        description=f"Approval deleted: {row.type} - ${row.amount}",
+    )
     return {"ok": True}

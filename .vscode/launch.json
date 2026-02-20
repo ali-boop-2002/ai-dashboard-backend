@@ -6,18 +6,22 @@
       "type": "python",
       "request": "launch",
       "module": "uvicorn",
-      "args": [
-        "app.main:app",
-        "--reload",
-        "--port",
-        "8000"
-      ],
+      "args": ["app.main:app", "--port", "8000"],
       "jinja": true,
       "justMyCode": true,
       "console": "integratedTerminal",
-      "env": {
-        "PYTHONUNBUFFERED": "1"
-      }
+      "env": { "PYTHONUNBUFFERED": "1" }
+    },
+    {
+      "name": "FastAPI (with reload)",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--port", "8000"],
+      "jinja": true,
+      "justMyCode": true,
+      "console": "integratedTerminal",
+      "env": { "PYTHONUNBUFFERED": "1" }
     }
   ]
 }

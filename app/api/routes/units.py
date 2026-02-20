@@ -9,6 +9,8 @@ from app.api.deps import get_db
 from app.models.unit import Unit
 from app.models.rent_payments import RentPayment
 from app.schemas.unit import UnitCreate, UnitUpdate, UnitOut, compute_over_due
+from app.core.auth import get_current_user, User
+from app.core.audit import log_audit
 
 
 def _add_one_month(dt: datetime) -> datetime:
@@ -32,6 +34,7 @@ router = APIRouter(prefix="/units", tags=["units"])
 @router.get("", response_model=List[UnitOut])
 def list_units(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     property_id: Optional[int] = Query(None, description="Filter by property ID"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -50,7 +53,11 @@ def list_units(
 
 
 @router.get("/{unit_id}", response_model=UnitOut)
-def get_unit(unit_id: int, db: Session = Depends(get_db)):
+def get_unit(
+    unit_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Get a specific unit by ID.
     """
@@ -61,7 +68,11 @@ def get_unit(unit_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=UnitOut, status_code=201)
-def create_unit(payload: UnitCreate, db: Session = Depends(get_db)):
+def create_unit(
+    payload: UnitCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Manually create a unit (normally units are auto-created when property is created).
     over_due is computed from occupied, rent_date, paid.
@@ -93,11 +104,28 @@ def create_unit(payload: UnitCreate, db: Session = Depends(get_db)):
     db.add(unit)
     db.commit()
     db.refresh(unit)
+    log_audit(
+        db,
+        actor=current_user,
+        action="created",
+        entity_type="unit",
+        entity_id=str(unit.id),
+        status="over_due" if unit.over_due else "ok",
+        property_id=unit.property_id,
+        source="api",
+        description=f"Unit created: {unit.unit_number}",
+        risk_level="high" if unit.over_due else "low",
+    )
     return unit
 
 
 @router.patch("/{unit_id}", response_model=UnitOut)
-def update_unit(unit_id: int, payload: UnitUpdate, db: Session = Depends(get_db)):
+def update_unit(
+    unit_id: int,
+    payload: UnitUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Update a unit's rent_amount and/or occupied status.
     """
@@ -107,6 +135,7 @@ def update_unit(unit_id: int, payload: UnitUpdate, db: Session = Depends(get_db)
 
     data = payload.model_dump(exclude_unset=True)
     paid_just_set_true = data.get("paid") is True
+    rent_payment: Optional[RentPayment] = None
 
     for k, v in data.items():
         setattr(unit, k, v)
@@ -158,11 +187,39 @@ def update_unit(unit_id: int, payload: UnitUpdate, db: Session = Depends(get_db)
 
     db.commit()
     db.refresh(unit)
+    log_audit(
+        db,
+        actor=current_user,
+        action="updated",
+        entity_type="unit",
+        entity_id=str(unit.id),
+        status="over_due" if unit.over_due else "ok",
+        property_id=unit.property_id,
+        source="api",
+        description=f"Unit updated: {unit.unit_number}",
+        risk_level="high" if unit.over_due else "low",
+    )
+    if rent_payment is not None:
+        log_audit(
+            db,
+            actor=current_user,
+            action="created",
+            entity_type="rent_payment",
+            entity_id=str(rent_payment.id),
+            status=rent_payment.status,
+            property_id=rent_payment.property_id,
+            source="api",
+            description=f"Rent payment created for unit {unit.unit_number}",
+        )
     return unit
 
 
 @router.delete("/{unit_id}", status_code=204)
-def delete_unit(unit_id: int, db: Session = Depends(get_db)):
+def delete_unit(
+    unit_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Delete a unit.
     """
@@ -172,4 +229,16 @@ def delete_unit(unit_id: int, db: Session = Depends(get_db)):
 
     db.delete(unit)
     db.commit()
+    log_audit(
+        db,
+        actor=current_user,
+        action="deleted",
+        entity_type="unit",
+        entity_id=str(unit.id),
+        status="over_due" if unit.over_due else "ok",
+        property_id=unit.property_id,
+        source="api",
+        description=f"Unit deleted: {unit.unit_number}",
+        risk_level="high" if unit.over_due else "low",
+    )
     return None

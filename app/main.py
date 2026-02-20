@@ -8,6 +8,9 @@ from app.api.routes.properties import router as properties_router
 from app.api.routes.events import router as events_router
 from app.api.routes.units import router as units_router
 from app.api.routes.reports import router as reports_router
+from app.api.routes.ai import router as ai_router
+from app.api.routes.audit_logs import router as audit_logs_router
+from app.api.routes.pinecone import router as pinecone_router
 
 
 # 1) Create the app FIRST
@@ -35,6 +38,9 @@ app.include_router(properties_router)
 app.include_router(events_router)
 app.include_router(units_router)
 app.include_router(reports_router)
+app.include_router(ai_router)
+app.include_router(audit_logs_router)
+app.include_router(pinecone_router)
 # 4) Health check endpoints
 @app.get("/health")
 def health():

@@ -5,12 +5,16 @@ from typing import List, Optional
 from app.api.deps import get_db
 from app.models.ticket import Ticket
 from app.schemas.ticket import TicketCreate, TicketOut, TicketUpdate
+from app.core.auth import get_current_user, User
+from app.core.audit import log_audit
+from app.core.google_sheets import append_ticket_row, update_ticket_row, delete_ticket_row
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 @router.get("/", response_model=List[TicketOut])
 def list_tickets(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     status: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
@@ -38,15 +42,39 @@ def list_tickets(
     return query.order_by(Ticket.id.desc()).offset(offset).limit(limit).all()
 
 @router.post("/", response_model=TicketOut)
-def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)):
+def create_ticket(
+    payload: TicketCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     ticket = Ticket(**payload.model_dump())
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
+    log_audit(
+        db,
+        actor=current_user,
+        action="created",
+        entity_type="ticket",
+        entity_id=str(ticket.id),
+        status=ticket.status,
+        due_at=ticket.sla_due_at,
+        property_id=ticket.property_id,
+        source="api",
+        description=f"Ticket created: {ticket.issue}",
+    )
+
+    append_ticket_row(ticket)
+
     return ticket
 
 @router.patch("/{ticket_id}", response_model=TicketOut)
-def update_ticket(ticket_id: int, payload: TicketUpdate, db: Session = Depends(get_db)):
+def update_ticket(
+    ticket_id: int,
+    payload: TicketUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -57,14 +85,48 @@ def update_ticket(ticket_id: int, payload: TicketUpdate, db: Session = Depends(g
 
     db.commit()
     db.refresh(ticket)
+    log_audit(
+        db,
+        actor=current_user,
+        action="updated",
+        entity_type="ticket",
+        entity_id=str(ticket.id),
+        status=ticket.status,
+        due_at=ticket.sla_due_at,
+        property_id=ticket.property_id,
+        source="api",
+        description=f"Ticket updated: {ticket.issue}",
+    )
+
+    update_ticket_row(ticket)
+
     return ticket
 
 @router.delete("/{ticket_id}")
-def delete_ticket(ticket_id: int, db: Session = Depends(get_db)):
+def delete_ticket(
+    ticket_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
     db.delete(ticket)
     db.commit()
+    log_audit(
+        db,
+        actor=current_user,
+        action="deleted",
+        entity_type="ticket",
+        entity_id=str(ticket.id),
+        status=ticket.status,
+        due_at=ticket.sla_due_at,
+        property_id=ticket.property_id,
+        source="api",
+        description=f"Ticket deleted: {ticket.issue}",
+    )
+
+    delete_ticket_row(ticket_id)
+
     return {"ok": True}
