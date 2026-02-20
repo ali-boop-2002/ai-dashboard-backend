@@ -17,6 +17,7 @@ SCOPES = [
 
 TICKET_SHEET_HEADERS = [
     "ID",
+    "Property ID",
     "Type",
     "Issue",
     "Priority",
@@ -24,6 +25,7 @@ TICKET_SHEET_HEADERS = [
     "Assigned To",
     "Maintenance Category",
     "SLA Due At",
+    "Source",
 ]
 
 
@@ -62,6 +64,7 @@ def _ticket_to_row(ticket) -> list:
     """Convert a ticket ORM instance into a flat list matching TICKET_SHEET_HEADERS."""
     return [
         ticket.id,
+        ticket.property_id,
         ticket.type or "",
         ticket.issue or "",
         ticket.priority or "",
@@ -69,6 +72,7 @@ def _ticket_to_row(ticket) -> list:
         ticket.assigned_to or "",
         ticket.maintenance_category or "",
         ticket.sla_due_at.isoformat() if ticket.sla_due_at else "",
+        "API",
     ]
 
 

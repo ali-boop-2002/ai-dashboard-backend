@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import datetime
 
 from app.api.deps import get_db
 from app.models.ticket import Ticket
@@ -130,3 +131,31 @@ def delete_ticket(
     delete_ticket_row(ticket_id)
 
     return {"ok": True}
+
+@router.post("/from-sheet", response_model=TicketOut)
+def create_ticket_from_sheet(payload: TicketCreate, db: Session = Depends(get_db)):
+    """
+    Unauthenticated endpoint for Google Sheets to create tickets.
+    Called by Google Apps Script when a new row is added to the sheet.
+    """
+    ticket = Ticket(**payload.model_dump())
+    db.add(ticket)
+    db.commit()
+    db.refresh(ticket)
+    
+    log_audit(
+        db,
+        actor="GoogleSheets",
+        action="created",
+        entity_type="ticket",
+        entity_id=str(ticket.id),
+        status=ticket.status,
+        due_at=ticket.sla_due_at,
+        property_id=ticket.property_id,
+        source="google_sheets",
+        description=f"Ticket created from Google Sheets: {ticket.issue}",
+    )
+
+    append_ticket_row(ticket)
+
+    return ticket
