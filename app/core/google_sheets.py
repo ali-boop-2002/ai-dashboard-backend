@@ -1,4 +1,5 @@
 import logging
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -27,13 +28,19 @@ TICKET_SHEET_HEADERS = [
 
 
 def _get_client() -> gspread.Client:
-    """Build and return an authorised gspread client using the service-account JSON."""
-    creds_path = Path(settings.GOOGLE_SHEETS_CREDENTIALS_FILE)
-    if not creds_path.exists():
-        raise FileNotFoundError(
-            f"Google credentials file not found at {creds_path.resolve()}"
+    """Build and return an authorised gspread client using the service-account credentials."""
+    if not settings.GOOGLE_CREDENTIALS_JSON:
+        raise ValueError(
+            "GOOGLE_CREDENTIALS_JSON environment variable not set. "
+            "Please set it to the contents of your google-credentials.json file."
         )
-    creds = Credentials.from_service_account_file(str(creds_path), scopes=SCOPES)
+    
+    try:
+        creds_dict = json.loads(settings.GOOGLE_CREDENTIALS_JSON)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"GOOGLE_CREDENTIALS_JSON is not valid JSON: {e}")
+    
+    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     return gspread.authorize(creds)
 
 

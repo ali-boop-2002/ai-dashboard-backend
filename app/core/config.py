@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     PINECONE_EMBEDDING_DIM: int = 512
 
     # Google Sheets
-    GOOGLE_SHEETS_CREDENTIALS_FILE: str = "google-credentials.json"
+    GOOGLE_CREDENTIALS_JSON: Optional[str] = None
     GOOGLE_SHEETS_SPREADSHEET_ID: str = "1DcSCddZxIic8c6AOfkrgwJWOPpjAqY0R7TQMgHgBeJ0"
     GOOGLE_SHEETS_WORKSHEET_NAME: str = "Sheet1"
 
